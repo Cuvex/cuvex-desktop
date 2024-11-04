@@ -1,0 +1,3 @@
+pycryptodomex==3.21.0
+coverage==7.6.4
+parameterized==0.9.0
