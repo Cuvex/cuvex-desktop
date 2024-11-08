@@ -47,7 +47,7 @@ This application does not require to be installed in your system.  We recommend 
 
 1. Export the content of a card in a binary file using the Cuvex App in an Android or iPhone device with NFC support.
 2. Send the binary file to your Mac OS computer.  
-3. Go to the [downloads page](https://github.com/Cuvex/cuvex-desktop/releases) and download the file corresponding to your computer's processor.  If you have an Apple M series processor (1, 2, 3, 4 or later) select the file that contains the text "macos-arm64" in the name.  If your computer has an Intel processor, select the file that contains the text "macos-x86_64". Save the file in a location that you can easily locate, like your Downloads folder.
+3. Go to the [downloads page](https://github.com/Cuvex/cuvex-desktop/releases/tag/v1.1.0) and download the file corresponding to your computer's processor.  If you have an Apple M series processor (1, 2, 3, 4 or later) select the file that contains the text "macos-arm64" in the name.  If your computer has an Intel processor, select the file that contains the text "macos-x86_64". Save the file in a location that you can easily locate, like your Downloads folder.
 4. We **STRONGLY RECOMMEND** to verify your downloaded file, to avoid any tampering or corruption of the application.
 5. In the same downloads page, find the SHA256 checksum corresponding to the file you downloaded. It should be a string of 64 alphanumeric chars, for example:  
 ```
