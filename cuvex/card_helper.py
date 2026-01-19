@@ -103,8 +103,6 @@ def get_multisign_payload(binary_content: bytearray, index_begin: int,
     is only presents in 8K cards and only if the card was cyphered with the 
     multisign activated.
     """
-    if len(binary_content) < SIZE_8K_CARD:
-        return None
     return bytearray(binary_content[index_begin + prefix_size:])
 
 def process_card(binary_content: bytearray) -> RawCard:
