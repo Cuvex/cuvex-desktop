@@ -48,8 +48,21 @@ def process_card_version(version_info: str) -> Version:
     version_parts = re.sub(r'[vV]', '', version_info).split('.')
     patch_parts = version_parts[2].partition('(')
     final_part = patch_parts[2].replace(')', '') if patch_parts[2] else None
-    return Version(version_info, int(version_parts[0]), int(version_parts[1]),
-                   int(patch_parts[0]), final_part)
+
+    version_part_major = re.sub(r'\D', '', '0' if not version_parts[0] else version_parts[0])
+    version_part_major = '0' if not version_part_major else version_part_major
+
+    version_part_minor = re.sub(r'\D', '', '0' if not version_parts[1] else version_parts[1])
+    version_part_minor = '0' if not version_part_minor else version_part_minor
+
+    last_part = re.sub(r'\D', '', '0' if not patch_parts[0] else patch_parts[0])
+    last_part = '0' if not last_part else last_part
+
+    return Version(version_info, 
+                   int(version_part_major), 
+                   int(version_part_minor),
+                   int(last_part), 
+                   final_part)
 
 def process_card_signers(signers: str) -> KeysDescriptor:
     """Returns a KeysDescriptor that describes how the card was cyphered.
@@ -90,8 +103,6 @@ def get_multisign_payload(binary_content: bytearray, index_begin: int,
     is only presents in 8K cards and only if the card was cyphered with the 
     multisign activated.
     """
-    if len(binary_content) < SIZE_8K_CARD:
-        return None
     return bytearray(binary_content[index_begin + prefix_size:])
 
 def process_card(binary_content: bytearray) -> RawCard:
