@@ -19,15 +19,49 @@ class KeysDescriptor:
         self.total = total
         self.required = required
 
+class CryptoParams:
+    """Cryptographic parameters for card decryption.
+
+    These parameters are extracted from Record 3 and determine
+    the decryption strategy (legacy vs PBKDF2-based).
+
+    Attributes:
+        use_pbkdf2: Whether to use PBKDF2 key derivation
+        use_permutations: Whether to try password permutations
+        has_biometry: Whether card requires biometric authentication (BIT1)
+        salt: Salt for PBKDF2 (16 bytes, None for legacy)
+        iv: Initialization Vector (16 bytes: 12 nonce + 4 counter, None for legacy)
+        iterations: PBKDF2 iteration count (default 50000)
+    """
+    DEFAULT_PBKDF2_ITERATIONS = 50000
+
+    def __init__(self):
+        self.use_pbkdf2 = False
+        self.use_permutations = True
+        self.has_biometry = False
+        self.salt = None
+        self.iv = None
+        self.iterations = self.DEFAULT_PBKDF2_ITERATIONS
+
+    def reset_content(self):
+        """Zerorizes sensitive cryptographic parameters."""
+        if self.salt:
+            clean_bytearray(self.salt)
+            self.salt = None
+        if self.iv:
+            clean_bytearray(self.iv)
+            self.iv = None
+
 class RawCard:
-    def __init__(self, hash: str, alias: bytearray, payload: bytearray, version: Version, 
-                 signs: KeysDescriptor, multisign: bytearray):
+    def __init__(self, hash: str, alias: bytearray, payload: bytearray, version: Version,
+                 signs: KeysDescriptor, multisign: bytearray, crypto_params=None):
         self.card_hash = hash
         self._alias = alias
         self.payload = payload
         self.version = version
         self.signs = signs
         self.multisign = multisign
+        self.crypto_params = crypto_params if crypto_params else CryptoParams()
 
     def reset_content(self):
         """For security reasons it is recommended to zerorize the variables
@@ -42,6 +76,9 @@ class RawCard:
         self.signs = None
         clean_bytearray(self.multisign)
         self.multisign = None
+        if self.crypto_params:
+            self.crypto_params.reset_content()
+            self.crypto_params = None
 
     @property
     def alias_bytes(self):

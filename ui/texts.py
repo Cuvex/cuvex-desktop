@@ -42,4 +42,5 @@ WAIT_TO_TRY_AGAIN = 'You have to wait for {:02d}:{:02d} minutes to try again.'
 FAILED_DECRYPTION_WAIT = "It wasn't possible to decrypt your card. Possibly one or more of the passwords are not correct.  You have to wait for 5 minutes to try again."
 FAILED_DECRYPTION_RETRY = "It wasn't possible to decrypt your card. Possibly one or more of the passwords are not correct.  You still have {} attempts left."
 FEWER_PASSWORD_THAN_REQUIRED = 'Fewer passwords were entered than required.'
+BIOMETRY_NOT_SUPPORTED_MSG = 'This card requires biometric authentication (fingerprint) and cannot be decrypted on desktop. Please use the Cuvex mobile app with a compatible device to decrypt this card.'
 CLOSE = 'Close'
