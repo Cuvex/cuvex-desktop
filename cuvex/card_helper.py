@@ -215,6 +215,94 @@ def create_crypto_params(decode_result) -> CryptoParams:
 
     return crypto_params
 
+def _validate_card_content(binary_content: bytearray) -> None:
+    """Validates binary content is not empty.
+
+    Args:
+        binary_content: Binary card data
+
+    Raises:
+        EmptyCardException: If binary content is empty
+    """
+    if not binary_content:
+        raise EmptyCardException
+
+def _extract_card_records(binary_content: bytearray) -> tuple:
+    """Extracts all card records based on detected format.
+
+    Args:
+        binary_content: Binary card data
+
+    Returns:
+        Tuple of (alias_data, payload_data, record3_data, multisign_data, card_format)
+
+    Raises:
+        BadFormatContentException: If format detection or extraction fails
+    """
+    card_format = detect_format(binary_content)
+
+    if card_format == FORMAT_NEW:
+        alias_data, payload_data, record3_data, multisign_data = extract_with_delimiters(binary_content)
+    else:
+        alias_data, payload_data, record3_data, multisign_data = extract_with_fixed_length(binary_content)
+        # Strip padding for legacy format
+        record3_data = bytes(record3_data).rstrip(b'\x00')
+
+    return alias_data, payload_data, record3_data, multisign_data, card_format
+
+def _decode_and_validate_header(record3_data: bytes) -> tuple:
+    """Decodes Record 3 and validates biometry requirement.
+
+    Args:
+        record3_data: Raw Record 3 binary data
+
+    Returns:
+        Tuple of (decode_result, header_text)
+
+    Raises:
+        BadFormatContentException: If decode fails
+        BiometryNotSupportedException: If BIT1 is present (biometry required)
+    """
+    try:
+        decode_result = decode_record3_payload(record3_data)
+    except CodecError as e:
+        raise BadFormatContentException(f"Invalid Record 3 format: {e}")
+
+    if BIT_WITH_BIOMETRY in decode_result.header_text:
+        raise BiometryNotSupportedException(
+            "Card requires biometric authentication and cannot be decrypted on desktop"
+        )
+
+    return decode_result, decode_result.header_text
+
+def _build_raw_card(binary_content: bytearray, alias_data: bytearray,
+                    payload_data: bytearray, multisign_data: bytearray,
+                    header_text: str, crypto_params: CryptoParams) -> RawCard:
+    """Builds RawCard object from parsed components.
+
+    Args:
+        binary_content: Original binary card data (for hash)
+        alias_data: Extracted alias bytes
+        payload_data: Encrypted payload bytes
+        multisign_data: Multisign data (empty if not multisign card)
+        header_text: Decoded header string
+        crypto_params: Cryptographic parameters
+
+    Returns:
+        Fully constructed RawCard object
+    """
+    _, version, signers, _, _ = process_card_info(header_text)
+
+    return RawCard(
+        hashlib.md5(binary_content).hexdigest(),
+        copy_and_clean(bytearray(alias_data)),
+        bytearray(payload_data),
+        version,
+        signers,
+        bytearray(multisign_data),
+        crypto_params
+    )
+
 def process_card(binary_content: bytearray) -> RawCard:
     """Returns a RawCard objects with the different parts of the content of a
     card (readed from a binary file exported by the Cuvex app) ready to be
@@ -224,52 +312,26 @@ def process_card(binary_content: bytearray) -> RawCard:
     - Legacy: Fixed-length records with ASCII header
     - New: Delimiter-based records with compressed header + PBKDF2 params
 
+    This function orchestrates the card processing pipeline by delegating to
+    specialized helper functions for validation, extraction, decoding, and
+    object construction.
+
     Raises:
         EmptyCardException: If binary content is empty
         BadFormatContentException: If binary content is invalid
         BiometryNotSupportedException: If card requires biometric authentication (BIT1)
         CodecError: If record 3 decoding fails
     """
-    if not binary_content:
-        raise EmptyCardException
+    _validate_card_content(binary_content)
 
-    # Detect format (new or legacy)
-    card_format = detect_format(binary_content)
+    alias_data, payload_data, record3_data, multisign_data, card_format = \
+        _extract_card_records(binary_content)
 
-    # Extract records based on detected format
-    if card_format == FORMAT_NEW:
-        alias_data, payload_data, record3_data, multisign_data = extract_with_delimiters(binary_content)
-    else:
-        alias_data, payload_data, record3_data, multisign_data = extract_with_fixed_length(binary_content)
-        record3_data = bytes(record3_data).rstrip(b'\x00')  # Strip padding for legacy
+    decode_result, header_text = _decode_and_validate_header(record3_data)
 
-    # Decode Record 3
-    try:
-        decode_result = decode_record3_payload(bytes(record3_data))
-    except CodecError as e:
-        raise BadFormatContentException(f"Invalid Record 3 format: {e}")
-
-    header_text = decode_result.header_text
-
-    # Check for biometry requirement (BIT1 not supported)
-    if BIT_WITH_BIOMETRY in header_text:
-        raise BiometryNotSupportedException(
-            "Card requires biometric authentication and cannot be decrypted on desktop"
-        )
-
-    # Create crypto parameters based on format
     crypto_params = create_crypto_params(decode_result)
 
-    # Parse header to extract version and signers
-    _, version, signers, _, _ = process_card_info(header_text)
-
-    # Return RawCard
-    return RawCard(
-        hashlib.md5(binary_content).hexdigest(),
-        copy_and_clean(bytearray(alias_data)),
-        bytearray(payload_data),
-        version,
-        signers,
-        bytearray(multisign_data),
-        crypto_params
+    return _build_raw_card(
+        binary_content, alias_data, payload_data, multisign_data,
+        header_text, crypto_params
     )

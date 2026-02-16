@@ -57,9 +57,75 @@ def process_plain_content(plain_content: bytearray) -> PlainContent:
     
     return None
 
+def _decrypt_with_pbkdf2(passwords: list, card: RawCard) -> PlainContent:
+    """Decrypts using PBKDF2 key derivation (new format).
+
+    Args:
+        passwords: List of password bytearrays
+        card: RawCard with crypto_params.use_pbkdf2 = True
+
+    Returns:
+        PlainContent if successful, None otherwise
+    """
+    sorted_hashes = sort_passwords_lexicographically(passwords)
+
+    concatenated = concatenate_hashes(sorted_hashes)
+
+    derived_key = derive_key_pbkdf2(
+        concatenated,
+        card.crypto_params.salt,
+        card.crypto_params.iterations
+    )
+
+    nonce = card.crypto_params.iv[:NONCE_SIZE]
+    counter = card.crypto_params.iv[NONCE_SIZE:]
+
+    try:
+        plain_bytes = decrypt_aes_gcm(derived_key, nonce, counter, card.payload)
+        return process_plain_content(plain_bytes)
+    except Exception:
+        return None
+
+def _decrypt_with_permutations(passwords: list, card: RawCard) -> PlainContent:
+    """Decrypts using password permutations (legacy format).
+
+    Args:
+        passwords: List of password bytearrays
+        card: RawCard with crypto_params.use_permutations = True
+
+    Returns:
+        PlainContent if successful, None otherwise
+    """
+    # Derive IV from card alias (MD5 hash, first 12 bytes)
+    iv_legacy = hashlib.md5(card.alias_bytes).digest()[:NONCE_SIZE]
+    header = bytearray([0] * AES_GCM_HEADER_SIZE)
+
+    # Try all permutations of passwords
+    for permutation in heap_permutation(passwords):
+        # Concatenate permutation and hash to create key
+        concatenated = b''.join(permutation)
+        key = hashlib.sha256(concatenated).digest()
+
+        # Attempt decryption
+        plain_data = process_plain_content(
+            decrypt_aes_gcm(
+                bytearray(key),
+                bytearray(iv_legacy),
+                header,
+                card.payload
+            )
+        )
+
+        if plain_data:
+            return plain_data
+
+    return None
+
 def decrypt_all_passwords_required(passwords: list, card: RawCard) -> PlainContent:
     """Decrypts a card when the required passwords to decrypt are the same as the
     total passwords used to generate the cyphered content.
+
+    Routes to appropriate decryption strategy based on crypto_params.
 
     Supports two decryption modes:
     - Legacy mode: Uses permutations and alias-derived IV
@@ -72,61 +138,10 @@ def decrypt_all_passwords_required(passwords: list, card: RawCard) -> PlainConte
     Returns:
         PlainContent object with decrypted data, or None if decryption fails
     """
-
-    header = bytearray([0] * AES_GCM_HEADER_SIZE)
-
     if card.crypto_params.use_pbkdf2:
-        # Sort passwords lexicographically by their SHA-256 hashes
-        sorted_hashes = sort_passwords_lexicographically(passwords)
-
-        # Concatenate sorted hashes and create master key hash
-        concatenated = concatenate_hashes(sorted_hashes)
-        # master_key_hash = bytearray(hashlib.sha256(concatenated).digest())
-
-        # Derive final encryption key using PBKDF2
-        derived_key = derive_key_pbkdf2(
-            concatenated,
-            card.crypto_params.salt,
-            card.crypto_params.iterations
-        )
-
-        # Extract nonce from IV (first 12 bytes)
-        nonce = card.crypto_params.iv[:NONCE_SIZE]
-        counter = card.crypto_params.iv[NONCE_SIZE:]
-
-        # Decrypt payload
-        try:
-            plain_bytes = decrypt_aes_gcm(derived_key, nonce, counter, card.payload)
-            plain_data = process_plain_content(plain_bytes)
-            return plain_data
-        except Exception:
-            return None
-
+        return _decrypt_with_pbkdf2(passwords, card)
     else:
-        # Legacy mode with permutations
-        # Derive IV from card alias (MD5 hash, first 12 bytes)
-        iv_legacy = hashlib.md5(card.alias_bytes).digest()[:NONCE_SIZE]
-
-        # Try all permutations of passwords
-        for permutation in heap_permutation(passwords):
-            # Concatenate permutation and hash to create key
-            concatenated = b''.join(permutation)
-            key = hashlib.sha256(concatenated).digest()
-
-            # Attempt decryption
-            plain_data = process_plain_content(
-                decrypt_aes_gcm(
-                    bytearray(key),
-                    bytearray(iv_legacy),
-                    header,
-                    card.payload
-                )
-            )
-
-            if plain_data:
-                return plain_data
-
-        return None
+        return _decrypt_with_permutations(passwords, card)
 
 def _decrypt_multisign_combination_pbkdf2(passwords: list, combination_data: bytes, main_nonce: bytearray, payload: bytearray, iterations: int) -> PlainContent:
     """Decrypts a single multisign combination using PBKDF2 mode.
@@ -205,8 +220,81 @@ def _decrypt_multisign_combination_legacy(permutation: list, encrypted_subkey: b
         return None
 
 
+def _decrypt_multisign_pbkdf2(passwords: list, card: RawCard) -> PlainContent:
+    """Decrypts multisign card using PBKDF2 (new format).
+
+    Args:
+        passwords: List of password bytearrays
+        card: RawCard with multisign data and crypto_params.use_pbkdf2 = True
+
+    Returns:
+        PlainContent if successful, None otherwise
+    """
+    main_nonce = card.crypto_params.iv[:NONCE_SIZE]
+    num_combinations = comb(card.signs.total, card.signs.required)
+
+    for index in range(num_combinations):
+        # Extract 64-byte block for this combination
+        offset = index * MULTISIGN_BLOCK_SIZE
+        combination_data = card.multisign[offset:offset + MULTISIGN_BLOCK_SIZE]
+
+        # Try to decrypt with this combination
+        result = _decrypt_multisign_combination_pbkdf2(
+            passwords,
+            combination_data,
+            main_nonce,
+            card.payload,
+            card.crypto_params.iterations
+        )
+
+        if result:
+            return result
+
+    return None
+
+def _decrypt_multisign_legacy(passwords: list, card: RawCard) -> PlainContent:
+    """Decrypts multisign card using permutations (legacy format).
+
+    Args:
+        passwords: List of password bytearrays
+        card: RawCard with multisign data and crypto_params.use_permutations = True
+
+    Returns:
+        PlainContent if successful, None otherwise
+    """
+    iv_legacy = bytearray(hashlib.md5(card.alias_bytes).digest()[:NONCE_SIZE])
+    num_combinations = comb(card.signs.total, card.signs.required)
+
+    def _clean_iv():
+        """Zerorizes the legacy IV bytearray"""
+        for i in range(len(iv_legacy)):
+            iv_legacy[i] = 0
+
+    for index in range(num_combinations):
+        # Extract 32-byte encrypted subkey
+        encrypted_subkey = card.multisign[index * SUBKEY_SIZE:(index + 1) * SUBKEY_SIZE]
+
+        # Try all permutations of passwords
+        for permutation in heap_permutation(passwords):
+            result = _decrypt_multisign_combination_legacy(
+                permutation,
+                encrypted_subkey,
+                iv_legacy,
+                card.payload
+            )
+
+            if result:
+                _clean_iv()
+                return result
+
+    # Clean IV before returning
+    _clean_iv()
+    return None
+
 def decrypt_not_all_passwords_required(passwords: list, card: RawCard) -> PlainContent:
     """Decrypts a card when not all the passwords are required to decrypt (multisig M-of-N).
+
+    Routes to appropriate decryption strategy based on crypto_params.
 
     Supports two decryption modes:
     - Legacy mode: 32-byte blocks with password permutations
@@ -219,61 +307,10 @@ def decrypt_not_all_passwords_required(passwords: list, card: RawCard) -> PlainC
     Returns:
         PlainContent object if successful, None otherwise
     """
-    num_combinations = comb(card.signs.total, card.signs.required)
-
     if card.crypto_params.use_pbkdf2:
-        # New PBKDF2 mode - deterministic password order
-        # No sensitive IV to clean (uses card.crypto_params.iv directly)
-        main_nonce = card.crypto_params.iv[:NONCE_SIZE]
-
-        for index in range(num_combinations):
-            # Extract 64-byte block for this combination
-            offset = index * MULTISIGN_BLOCK_SIZE
-            combination_data = card.multisign[offset:offset + MULTISIGN_BLOCK_SIZE]
-
-            # Try to decrypt with this combination
-            result = _decrypt_multisign_combination_pbkdf2(
-                passwords,
-                combination_data,
-                main_nonce,
-                card.payload,
-                card.crypto_params.iterations
-            )
-
-            if result:
-                return result
-
-        return None
-
+        return _decrypt_multisign_pbkdf2(passwords, card)
     else:
-        # Legacy mode - try all permutations for each combination
-        iv_legacy = bytearray(hashlib.md5(card.alias_bytes).digest()[:NONCE_SIZE])
-
-        def _clean_iv():
-            """Zerorizes the legacy IV bytearray"""
-            for i in range(len(iv_legacy)):
-                iv_legacy[i] = 0
-
-        for index in range(num_combinations):
-            # Extract 32-byte encrypted subkey
-            encrypted_subkey = card.multisign[index * SUBKEY_SIZE:(index + 1) * SUBKEY_SIZE]
-
-            # Try all permutations of passwords
-            for permutation in heap_permutation(passwords):
-                result = _decrypt_multisign_combination_legacy(
-                    permutation,
-                    encrypted_subkey,
-                    iv_legacy,
-                    card.payload
-                )
-
-                if result:
-                    _clean_iv()
-                    return result
-
-        # Clean IV before returning
-        _clean_iv()
-        return None
+        return _decrypt_multisign_legacy(passwords, card)
 
 def decrypt_card(passwords_code_points: list, card: RawCard) -> PlainContent:
     """Decrypt the content of a card. Returns a PlainContent objetct with

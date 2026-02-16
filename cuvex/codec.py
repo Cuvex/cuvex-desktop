@@ -7,6 +7,7 @@ Codec for Record 3 compression/decompression.
 Supports legacy ASCII format and new compressed format with PBKDF2.
 """
 import re
+from dataclasses import dataclass
 
 # Token structure constants (new format)
 TOKEN_LEN = 11
@@ -103,6 +104,95 @@ class DecodeResult:
         self.kind = kind
         self.header_text = header_text
         self.binary32 = binary32
+
+
+@dataclass
+class TokenFields:
+    """Parsed fields from compressed token.
+
+    Attributes:
+        fw_major: Firmware major version (0-9)
+        fw_minor: Firmware minor version (0-9)
+        fw_patch: Firmware patch version (0-9)
+        hw_version: Hardware version (1-9)
+        mx: Multisign total signers (1-6)
+        my: Multisign required signers (1-6)
+        p: P-value flag (0-1)
+        c: C-value flag (0-1)
+        bit: BIT flag (0-1)
+        checksum: Checksum value (0-9)
+    """
+    fw_major: int
+    fw_minor: int
+    fw_patch: int
+    hw_version: int
+    mx: int
+    my: int
+    p: int
+    c: int
+    bit: int
+    checksum: int
+
+    @classmethod
+    def from_digits(cls, digits: list) -> 'TokenFields':
+        """Creates TokenFields from 10-digit list.
+
+        Args:
+            digits: List of 10 integer values
+
+        Returns:
+            TokenFields instance
+
+        Raises:
+            CodecError: If digit count is not exactly 10
+        """
+        if len(digits) != TOKEN_DIGIT_COUNT:
+            raise CodecError(f"Expected {TOKEN_DIGIT_COUNT} digits, got {len(digits)}")
+
+        return cls(
+            fw_major=digits[IDX_FW_MAJOR],
+            fw_minor=digits[IDX_FW_MINOR],
+            fw_patch=digits[IDX_FW_PATCH],
+            hw_version=digits[IDX_HW_VERSION],
+            mx=digits[IDX_MULTISIGN_X],
+            my=digits[IDX_MULTISIGN_Y],
+            p=digits[IDX_P_VALUE],
+            c=digits[IDX_C_VALUE],
+            bit=digits[IDX_BIT_VALUE],
+            checksum=digits[IDX_CHECKSUM]
+        )
+
+    def validate(self) -> None:
+        """Validates all fields are within allowed ranges and checksum is correct.
+
+        Raises:
+            CodecError: If any field is out of range or checksum is invalid
+        """
+        _validate_field_ranges(
+            self.fw_major, self.fw_minor, self.fw_patch,
+            self.hw_version, self.mx, self.my,
+            self.p, self.c, self.bit
+        )
+
+        expected = _calculate_checksum(
+            self.fw_major, self.fw_minor, self.fw_patch,
+            self.hw_version, self.mx, self.my,
+            self.p, self.c, self.bit
+        )
+        if self.checksum != expected:
+            raise CodecError(f"Checksum mismatch: expected {expected}, got {self.checksum}")
+
+    def to_header(self) -> str:
+        """Reconstructs header string from fields.
+
+        Returns:
+            Header string in format: ENC,v1.2.0(2),M-6:3,P-0,C-1,BIT1
+        """
+        return _reconstruct_header(
+            self.fw_major, self.fw_minor, self.fw_patch,
+            self.hw_version, self.mx, self.my,
+            self.p, self.c, self.bit
+        )
 
 
 def _calculate_checksum(fw_major, fw_minor, fw_patch, hw_version, mx, my, p, c, bit):
@@ -222,38 +312,14 @@ def decode_new_payload(payload):
     token = payload[:TOKEN_LEN]
     binary_data = payload[TOKEN_LEN:]
 
-    # Extract and validate digits
+    # Extract, parse, and validate token fields
     digits = _extract_token_digits(token)
-
-    if len(digits) != TOKEN_DIGIT_COUNT:
-        raise CodecError(f"Token must contain exactly {TOKEN_DIGIT_COUNT} digits")
-
-    # Parse field values
-    fw_major = digits[IDX_FW_MAJOR]
-    fw_minor = digits[IDX_FW_MINOR]
-    fw_patch = digits[IDX_FW_PATCH]
-    hw_version = digits[IDX_HW_VERSION]
-    mx = digits[IDX_MULTISIGN_X]
-    my = digits[IDX_MULTISIGN_Y]
-    p = digits[IDX_P_VALUE]
-    c = digits[IDX_C_VALUE]
-    bit = digits[IDX_BIT_VALUE]
-    checksum = digits[IDX_CHECKSUM]
-
-    # Validate field ranges
-    _validate_field_ranges(fw_major, fw_minor, fw_patch, hw_version, mx, my, p, c, bit)
-
-    # Verify checksum
-    expected_checksum = _calculate_checksum(fw_major, fw_minor, fw_patch, hw_version, mx, my, p, c, bit)
-    if checksum != expected_checksum:
-        raise CodecError(f"Checksum mismatch: expected {expected_checksum}, got {checksum}")
-
-    # Reconstruct header
-    header = _reconstruct_header(fw_major, fw_minor, fw_patch, hw_version, mx, my, p, c, bit)
+    fields = TokenFields.from_digits(digits)
+    fields.validate()
 
     return DecodeResult(
         kind=FORMAT_NEW,
-        header_text=header,
+        header_text=fields.to_header(),
         binary32=binary_data
     )
 
