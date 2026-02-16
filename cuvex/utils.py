@@ -93,11 +93,9 @@ def derive_key_pbkdf2(password_hash, salt, iterations=None):
     if len(salt) != SALT_LENGTH:
         raise ValueError(f"salt must be {SALT_LENGTH} bytes, got {len(salt)}")
 
-    # Convert to bytes if needed
     password_bytes = bytes(password_hash)
     salt_bytes = bytes(salt)
 
-    # Derive key using PBKDF2
     derived_key = PBKDF2(
         password_bytes,
         salt_bytes,
@@ -133,16 +131,13 @@ def sort_passwords_lexicographically(passwords_bytes):
     if not passwords_bytes:
         return []
 
-    # Convert each password to SHA-256 hash
     password_hashes = []
     for pwd in passwords_bytes:
         hash_sha256 = hashlib.sha256(bytes(pwd)).digest()
         password_hashes.append(hash_sha256)
 
-    # Sort lexicographically
     password_hashes.sort()
 
-    # Convert back to bytearrays
     return [bytearray(h) for h in password_hashes]
 
 

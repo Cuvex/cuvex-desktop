@@ -9,7 +9,6 @@ Supports legacy ASCII format and new compressed format with PBKDF2.
 import re
 from dataclasses import dataclass
 
-# Token structure constants (new format)
 TOKEN_LEN = 11
 TOKEN_PREFIX = 'E'
 TOKEN_PREFIX_BYTE = b'E'
@@ -312,7 +311,6 @@ def decode_new_payload(payload):
     token = payload[:TOKEN_LEN]
     binary_data = payload[TOKEN_LEN:]
 
-    # Extract, parse, and validate token fields
     digits = _extract_token_digits(token)
     fields = TokenFields.from_digits(digits)
     fields.validate()
@@ -345,7 +343,6 @@ def decode_legacy_header(payload):
     except UnicodeDecodeError as e:
         raise CodecError("Legacy payload must be valid ASCII") from e
 
-    # Try matching with BIT field first
     match_with_bit = LEGACY_WITH_BIT_PATTERN.match(header_str)
     if match_with_bit:
         return DecodeResult(
@@ -354,7 +351,6 @@ def decode_legacy_header(payload):
             binary32=None
         )
 
-    # Try matching without BIT field
     match_without_bit = LEGACY_NO_BIT_PATTERN.match(header_str)
     if match_without_bit:
         return DecodeResult(
