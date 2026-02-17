@@ -299,8 +299,7 @@ class TestDecryptMultisignCombinationPbkdf2(unittest.TestCase):
         # Encrypt master key
         sorted_hashes = sort_passwords_lexicographically(passwords)
         concatenated = concatenate_hashes(sorted_hashes)
-        submaster_hash = hashlib.sha256(concatenated).digest()
-        derived_key = derive_key_pbkdf2(bytearray(submaster_hash), bytearray(salt_combination), iterations)
+        derived_key = derive_key_pbkdf2(bytearray(concatenated), bytearray(salt_combination), iterations)
 
         cipher = AES.new(bytes(derived_key), AES.MODE_GCM, nonce=nonce_combination)
         cipher.update(bytes(header))

@@ -162,9 +162,8 @@ def _decrypt_multisign_combination_pbkdf2(passwords: list, combination_data: byt
     sorted_hashes = sort_passwords_lexicographically(passwords)
 
     concatenated = concatenate_hashes(sorted_hashes)
-    submaster_key_hash = bytearray(hashlib.sha256(concatenated).digest())
 
-    derived_key = derive_key_pbkdf2(submaster_key_hash, bytearray(salt_combination), iterations)
+    derived_key = derive_key_pbkdf2(concatenated, bytearray(salt_combination), iterations)
 
     try:
         master_key = decrypt_aes_gcm(derived_key, bytearray(nonce_combination), counter, bytearray(encrypted_master))
