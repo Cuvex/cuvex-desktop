@@ -5,13 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased](https://github.com/Cuvex/cuvex-desktop/compare/v1.1.2...develop)
 
 ### Fixed
 
+- Fixed version parsing to support alphanumeric patch versions (e.g., `1.1.0_dev2`, `1.1.0dev`)
+
 ### Added
 
+- Support for new Cuvex BIT card format with PBKDF2 key derivation
+- Support for delimiter-based NDEF card format (02413A, 02433A, 02493A, 024D3A)
+- Automatic format detection between legacy fixed-length and new delimiter-based cards
+- PBKDF2 key derivation
+- Biometry detection and validation (BIT0/BIT1 markers)
+
 ### Changed
+
+- Refactored `process_card()` to support both legacy and new card formats
+- Updated card extraction logic to use delimiters for new format and fixed lengths for legacy
 
 ### Removed
 
@@ -40,3 +51,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+[unreleased]: https://github.com/Cuvex/cuvex-desktop/compare/v1.1.2..develop
+[1.1.2]: https://github.com/Cuvex/cuvex-desktop/tree/v1.1.2

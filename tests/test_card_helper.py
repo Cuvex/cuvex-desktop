@@ -1,6 +1,11 @@
 import unittest
+import sys
+import os
 
-from card_helper import *
+# Add parent directory to path to import cuvex module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from cuvex.card_helper import *
 
 class Test_get_prefix_size(unittest.TestCase):
     """Tests cases for get_prefix_size function
