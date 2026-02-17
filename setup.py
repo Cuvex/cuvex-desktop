@@ -17,8 +17,8 @@ OPTIONS = {
         'CFBundleDisplayName': APP_NAME,
         'CFBundleGetInfoString': "Cuvex Decryption Tool",
         'CFBundleIdentifier': "io.cuvex.osx.cuvex",
-        'CFBundleVersion': "1.1.0",
-        'CFBundleShortVersionString': "1.1.0",
+        'CFBundleVersion': "1.2.0",
+        'CFBundleShortVersionString': "1.2.0",
         'NSHumanReadableCopyright': u"Copyright © 2024, Semilla3, All Rights Reserved"
     }
 }

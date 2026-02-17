@@ -248,7 +248,11 @@ def open_card_file():
         messagebox.showerror(title=txt.ERROR_TITLE, message=txt.BAD_FORMAT_CARD_MSG)
         quit_app()
         return
-    except Exception as e3:
+    except BiometryNotSupportedException as e3:
+        messagebox.showerror(title=txt.ERROR_TITLE, message=txt.BIOMETRY_NOT_SUPPORTED_MSG)
+        quit_app()
+        return
+    except Exception as e4:
         messagebox.showerror(title=txt.ERROR_TITLE, message=txt.UNKNOWN_ERROR_MSG)
         quit_app()
         return
